@@ -1,130 +1,54 @@
+from pandasai.llm.local_llm import LocalLLM
 import streamlit as st
 import pandas as pd
-import base64
-import request
 from pandasai import SmartDataframe
-from pandasai.llm.local_llm import LocalLLM
+import base64
 
-# Set page configuration
-st.set_page_config(
-    page_title="CSV Chat with Cloud Ollama",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Custom CSS for better styling
-st.markdown("""
-    <style>
-    .main {
-        padding: 2rem;
-    }
-    .stButton>button {
-        width: 100%;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# Ollama cloud configuration
-OLLAMA_URL = "https://theaisource-u29564.vm.elestio.app:57987/v1"
-OLLAMA_USERNAME = "root"
-OLLAMA_PASSWORD = "eZfLK3X4-SX0i-UmgUBe6E"
-
+# Create basic auth header
 def get_auth_header():
-    """Generate basic auth header for Ollama API"""
-    credentials = base64.b64encode(
-        f"{OLLAMA_USERNAME}:{OLLAMA_PASSWORD}".encode()
-    ).decode()
+    credentials = base64.b64encode(b"root:eZfLK3X4-SX0i-UmgUBe6E").decode()
     return {"Authorization": f"Basic {credentials}"}
 
-def initialize_llm():
-    """Initialize the LLM with cloud Ollama configuration"""
-    return LocalLLM(
-        api_base=OLLAMA_URL,
-        model="llama3.2",
+# Function to chat with CSV data
+def chat_with_csv(df, query):
+    # Initialize LocalLLM with cloud Ollama URL and authentication
+    llm = LocalLLM(
+        api_base="https://theaisource-u29564.vm.elestio.app:57987/v1",
+        model="llama3",
         headers=get_auth_header()
     )
+    # Initialize SmartDataframe with DataFrame and LLM configuration
+    pandas_ai = SmartDataframe(df, config={"llm": llm})
+    # Chat with the DataFrame using the provided query
+    result = pandas_ai.chat(query)
+    return result
 
-def process_query(dataframe, query):
-    """Process a query against the dataframe using PandasAI"""
-    try:
-        llm = initialize_llm()
-        pandas_ai = SmartDataframe(
-            dataframe,
-            config={
-                "llm": llm,
-                "verbose": True
-            }
-        )
-        return pandas_ai.chat(query)
-    except Exception as e:
-        st.error(f"Error processing query: {str(e)}")
-        return None
+# Set layout configuration for the Streamlit page
+st.set_page_config(layout='wide')
+# Set title for the Streamlit application
+st.title("Multiple-CSV ChatApp powered by LLM")
 
-def display_data_info(df):
-    """Display basic information about the loaded dataset"""
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.info(f"Rows: {df.shape[0]}")
-    with col2:
-        st.info(f"Columns: {df.shape[1]}")
-    with col3:
-        st.info(f"Data Types: {len(df.dtypes.unique())}")
+# Upload multiple CSV files
+input_csvs = st.sidebar.file_uploader("Upload your CSV files", type=['csv'], accept_multiple_files=True)
 
-def main():
-    # Application header
-    st.title("📊 Intelligent CSV Analysis with Cloud Ollama")
-    st.markdown("""
-    Upload your CSV files and chat with your data using natural language queries.
-    Powered by Llama 3 and PandasAI.
-    """)
-    
-    # Sidebar for file upload
-    with st.sidebar:
-        st.header("📁 Data Upload")
-        uploaded_files = st.file_uploader(
-            "Upload CSV files",
-            type=['csv'],
-            accept_multiple_files=True
-        )
-        
-        if uploaded_files:
-            selected_file = st.selectbox(
-                "Select a CSV to analyze",
-                [file.name for file in uploaded_files]
-            )
+# Check if CSV files are uploaded
+if input_csvs:
+    # Select a CSV file from the uploaded files using a dropdown menu
+    selected_file = st.selectbox("Select a CSV file", [file.name for file in input_csvs])
+    selected_index = [file.name for file in input_csvs].index(selected_file)
 
-    # Main content area
-    if uploaded_files:
-        # Load selected CSV
-        selected_index = [file.name for file in uploaded_files].index(selected_file)
-        df = pd.read_csv(uploaded_files[selected_index])
-        
-        # Display data preview
-        st.header("🔍 Data Preview")
-        display_data_info(df)
-        st.dataframe(df.head(5), use_container_width=True)
-        
-        # Query section
-        st.header("💬 Chat with your Data")
-        query = st.text_area(
-            "Enter your query about the data",
-            height=100,
-            placeholder="Example: What is the average of column X? or Show me a summary of the data."
-        )
-        
-        if query:
-            if st.button("🚀 Process Query", key="process"):
-                with st.spinner("Processing your query..."):
-                    result = process_query(df, query)
-                    if result is not None:
-                        st.success("Query processed successfully!")
-                        st.write("### Results")
-                        st.write(result)
-    
-    else:
-        # Display welcome message when no file is uploaded
-        st.info("👈 Please upload a CSV file to begin analysis")
+    #load and display the selected csv file
+    st.info("CSV uploaded successfully")
+    data = pd.read_csv(input_csvs[selected_index])
+    st.dataframe(data.head(3), use_container_width=True)
 
-if __name__ == "__main__":
-    main()
+    #Enter the query for analysis
+    st.info("Chat Below")
+    input_text = st.text_area("Enter the query")
+
+    #Perform analysis
+    if input_text:
+        if st.button("Chat with csv"):
+            st.info("Your Query: " + input_text)
+            result = chat_with_csv(data, input_text)
+            st.success(result)
