@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import base64
+import request
 from pandasai import SmartDataframe
 from pandasai.llm.local_llm import LocalLLM
 
