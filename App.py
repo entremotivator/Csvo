@@ -1,48 +1,104 @@
 import streamlit as st
-import pandas as pd  # Pandas for data manipulation
-from pandasai.llm.local_llm import LocalLLM  # Importing LocalLLM for LLM functionality
-from pandasai import SmartDataframe  # SmartDataframe for interacting with data using LLM
+import pandas as pd
+import requests
+from requests.auth import HTTPBasicAuth
+import json
 
-# Function to chat with CSV data
-def chat_with_csv(df, query):
-    # Initialize LocalLLM with the cloud Ollama API credentials
-    llm = LocalLLM(
-        api_base="https://theaisource-u29564.vm.elestio.app:57987/v1",
-        model="llama3",
-        headers={"Authorization": "Basic cm9vdDplWmZMSzNYNC1TWDVpLVVtZ1VCZTY="}  # Base64-encoded "root:eZfLK3X4-SX0i-UmgUBe6E"
-    )
-    # Initialize SmartDataframe with DataFrame and LLM configuration
-    pandas_ai = SmartDataframe(df, config={"llm": llm})
-    # Chat with the DataFrame using the provided query
-    result = pandas_ai.chat(query)
-    return result
+# Page configuration
+st.set_page_config(
+    page_title="CSV Chat with Ollama",
+    page_icon="📊",
+    layout="wide"
+)
 
-# Set layout configuration for the Streamlit page
-st.set_page_config(layout='wide')
-# Set title for the Streamlit application
-st.title("Multiple-CSV ChatApp powered by LLM")
+# Ollama API configuration
+OLLAMA_URL = "https://theaisource-u29564.vm.elestio.app:57987"
+AUTH = HTTPBasicAuth("root", "eZfLK3X4-SX0i-UmgUBe6E")
 
-# Upload multiple CSV files
-input_csvs = st.sidebar.file_uploader("Upload your CSV files", type=['csv'], accept_multiple_files=True)
+def query_ollama(prompt, model="llama2"):
+    """Send a query to Ollama API"""
+    try:
+        headers = {"Content-Type": "application/json"}
+        data = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False
+        }
+        
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            headers=headers,
+            auth=AUTH,
+            json=data,
+            verify=False  # Only if needed for self-signed certificates
+        )
+        
+        if response.status_code == 200:
+            return response.json()['response']
+        else:
+            st.error(f"API Error: {response.status_code}")
+            return None
+    except Exception as e:
+        st.error(f"Error querying Ollama: {str(e)}")
+        return None
 
-# Check if CSV files are uploaded
-if input_csvs:
-    # Select a CSV file from the uploaded files using a dropdown menu
-    selected_file = st.selectbox("Select a CSV file", [file.name for file in input_csvs])
-    selected_index = [file.name for file in input_csvs].index(selected_file)
+def analyze_data(df, query):
+    """Analyze the dataframe based on the query"""
+    # Create a context about the data
+    context = f"""
+    Analyze this DataFrame with columns: {', '.join(df.columns)}
+    First few rows: {df.head().to_string()}
+    Summary statistics: {df.describe().to_string()}
     
-    # Load and display the selected CSV file
-    st.info("CSV uploaded successfully")
-    data = pd.read_csv(input_csvs[selected_index])
-    st.dataframe(data.head(3), use_container_width=True)
+    User Question: {query}
     
-    # Enter the query for analysis
-    st.info("Chat Below")
-    input_text = st.text_area("Enter the query")
+    Provide a clear and concise analysis based on the data.
+    """
     
-    # Perform analysis
-    if input_text:
-        if st.button("Chat with csv"):
-            st.info("Your Query: " + input_text)
-            result = chat_with_csv(data, input_text)
-            st.success(result)
+    return query_ollama(context)
+
+def main():
+    st.title("📊 CSV Analysis with Ollama")
+    st.markdown("Upload your CSV file and ask questions about your data.")
+    
+    # File upload
+    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+    
+    if uploaded_file is not None:
+        try:
+            # Load and display data
+            df = pd.read_csv(uploaded_file)
+            st.write("### Data Preview")
+            st.dataframe(df.head())
+            
+            # Display basic statistics
+            st.write("### Basic Information")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.info(f"Rows: {df.shape[0]}")
+            with col2:
+                st.info(f"Columns: {df.shape[1]}")
+            with col3:
+                st.info(f"Data Types: {len(df.dtypes.unique())}")
+            
+            # Query input
+            st.write("### Ask Questions")
+            query = st.text_area(
+                "What would you like to know about the data?",
+                placeholder="Example: What is the average of column X? What are the main trends?"
+            )
+            
+            if query and st.button("Analyze"):
+                with st.spinner("Analyzing your data..."):
+                    result = analyze_data(df, query)
+                    if result:
+                        st.write("### Analysis Results")
+                        st.write(result)
+                        
+        except Exception as e:
+            st.error(f"Error processing file: {str(e)}")
+    else:
+        st.info("👆 Please upload a CSV file to begin")
+
+if __name__ == "__main__":
+    main()
