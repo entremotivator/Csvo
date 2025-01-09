@@ -40,7 +40,7 @@ def initialize_llm():
     """Initialize the LLM with cloud Ollama configuration"""
     return LocalLLM(
         api_base=OLLAMA_URL,
-        model="llama3",
+        model="llama3.2",
         headers=get_auth_header()
     )
 
